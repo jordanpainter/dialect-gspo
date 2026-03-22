@@ -1,0 +1,81 @@
+{
+  "model": {
+    "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "tokenizer_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "load_in_4bit": false
+  },
+  "data": {
+    "dataset_id": "jordanpainter/dialect-grpo-base-qwen",
+    "dataset_split": "train",
+    "base_output_column": "base_output_qwen",
+    "test_size": 0.1,
+    "seed": 42,
+    "smoke_subset_train": 16,
+    "smoke_subset_eval": 4,
+    "system_prompt": ""
+  },
+  "rewards": {
+    "weights": {
+      "dialect": 1.0,
+      "comet": 0,
+      "cosine": 0
+    },
+    "normalization": {
+      "method": "batch_zscore",
+      "clip_z": 5.0,
+      "eps": 1e-6,
+      "beta": 0.99,
+      "warmup_steps": 0
+    },
+    "comet_model_name": "Unbabel/wmt22-comet-da",
+    "comet_batch_size": 4,
+    "comet_force_cpu": true,
+    "sim_model_name": "sentence-transformers/all-MiniLM-L6-v2",
+    "verbose_examples": 2
+  },
+  "peft": {
+    "enabled": false,
+    "r": 8,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05,
+    "target_modules": [
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj"
+    ],
+    "bias": "none",
+    "task_type": "CAUSAL_LM"
+  },
+  "trainer": {
+    "output_dir": "outputs/tinyllama-smoke",
+    "overwrite_output_dir": true,
+    "num_train_epochs": 1,
+    "per_device_train_batch_size": 2,
+    "per_device_eval_batch_size": 2,
+    "gradient_accumulation_steps": 1,
+    "learning_rate": 1e-5,
+    "logging_steps": 1,
+    "save_steps": 20,
+    "eval_steps": 20,
+    "save_strategy": "steps",
+    "eval_strategy": "steps",
+    "bf16": false,
+    "gradient_checkpointing": false,
+    "max_completion_length": 32,
+    "length_safety_margin": 8,
+    "temperature": 0.9,
+    "top_p": 0.95,
+    "report_to": [
+      "wandb"
+    ],
+    "max_prompt_length": 512,
+    "num_generations": 2,
+    "beta": 0.1,
+    "generation_kwargs": {
+      "do_sample": true,
+      "temperature": 0.9,
+      "top_p": 0.95
+    }
+  }
+}
