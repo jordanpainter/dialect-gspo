@@ -1,8 +1,8 @@
 {
   "wandb": {
-    "project": "dialect-grpo-v2",
+    "project": "dialect_gspo",
     "entity": "jordanpainter",
-    "api_key": "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"
+    "api_key": "REPLACE_OR_USE_ENV"
   },
 
   "model": {
@@ -21,8 +21,13 @@
     "lora_alpha": 16,
     "lora_dropout": 0.05,
     "target_modules": [
-      "q_proj", "k_proj", "v_proj", "o_proj",
-      "gate_proj", "up_proj", "down_proj"
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj",
+      "gate_proj",
+      "up_proj",
+      "down_proj"
     ],
     "bias": "none",
     "task_type": "CAUSAL_LM"
@@ -64,7 +69,7 @@
     "ddp_find_unused_parameters": false,
     "length_safety_margin": 16,
 
-    "output_dir": "/mnt/fast/nobackup/scratch4weeks/jp01166/runs/grpo_gemma_50",
+    "output_dir": "/mnt/fast/nobackup/scratch4weeks/jp01166/runs/gspo_gemma_50",
     "report_to": "wandb",
 
     "max_steps": 5000,
@@ -77,11 +82,13 @@
     "gradient_checkpointing": true,
 
     "per_device_train_batch_size": 1,
-    "gradient_accumulation_steps": 4,
+    "gradient_accumulation_steps": 1,
+    "steps_per_generation": 4,
 
     "logging_steps": 1,
 
     "max_completion_length": 256,
+    "max_prompt_length": 2048,
 
     "num_generations": 4,
     "temperature": 0.7,
@@ -92,6 +99,11 @@
     },
 
     "beta": 0.0,
+    "epsilon": 0.0003,
+    "epsilon_high": 0.0004,
+    "importance_sampling_level": "sequence",
+    "loss_type": "grpo",
+
     "scale_rewards": false
   }
 }

@@ -1,19 +1,25 @@
 """
-src/grpo.py
+src/gspo.py
 
-GRPO training script for dialectal English preference learning (v2).
+GSPO-style training script for dialectal English preference learning.
 
-Main changes in this version:
+This keeps the existing GRPOTrainer-based pipeline, but switches the update rule
+to sequence-level importance sampling via GRPOConfig:
+    importance_sampling_level="sequence"
+
+That matches the GSPO-style route documented in TRL.
+
+Main features:
 - Supports loading datasets either from local disk or Hugging Face Hub.
 - Uses dialect density gain as the dialect reward term:
       dialect_gain = dialect_density(generation) - dialect_density(base_output)
 - Keeps semantic reward against the chosen response using COMET + cosine similarity.
 - Logs generation/base/chosen dialect densities and gain to trainer logs (and therefore W&B).
-- Surfaces KL-like metrics under stable names when TRL provides them.
+- Surfaces KL/clip-like metrics under stable names when TRL provides them.
 - Keeps hard prompt length guard and chat prompt formatting.
 
 Run:
-  accelerate launch --num_processes=1 -m src.grpo -c configs/qwen_v2.json
+  accelerate launch --num_processes=1 -m src.gspo -c configs/qwen_gspo.json
 """
 
 from __future__ import annotations
@@ -29,6 +35,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
+from comet import download_model as comet_download_model
+from comet import load_from_checkpoint as comet_load_from_checkpoint
 from datasets import load_from_disk
 from huggingface_hub import login as hf_login
 from huggingface_hub import snapshot_download
@@ -37,15 +45,7 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, set_seed
 from trl import GRPOConfig, GRPOTrainer
 
-# COMET
-from comet import download_model as comet_download_model
-from comet import load_from_checkpoint as comet_load_from_checkpoint
-
-# --- Reward components (project modules) ---
-# Assumes your refactor now exposes dialect_density(texts: List[str]) -> List[float]
 from rewards.dialect_reward import dialect_density
-
-# --- Prompt formatting fallback (project module) ---
 from src.formatting import build_chat_prompt
 
 
@@ -53,13 +53,14 @@ from src.formatting import build_chat_prompt
 # Logging and small utilities
 # =============================================================================
 
+
 def setup_logging() -> logging.Logger:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    return logging.getLogger("grpo")
+    return logging.getLogger("gspo")
 
 
 def get_local_rank() -> int:
@@ -142,6 +143,7 @@ class RunningZScore:
 # Model + tokenizer loading
 # =============================================================================
 
+
 def _build_quant_config(mcfg: Dict[str, Any]) -> Optional[BitsAndBytesConfig]:
     if not mcfg.get("load_in_4bit", False):
         return None
@@ -194,6 +196,7 @@ def load_policy_and_tokenizer(cfg: Dict[str, Any], logger: logging.Logger) -> Tu
 # =============================================================================
 # Dataset loading and prompt formatting
 # =============================================================================
+
 
 def load_dataset(cfg_data: Dict[str, Any], logger: logging.Logger):
     dataset_path = cfg_data.get("dataset_path")
@@ -264,6 +267,7 @@ def infer_stop_token_ids(tokenizer) -> List[int]:
 # =============================================================================
 # Cached reward scorers
 # =============================================================================
+
 
 class CachedCosineScorer:
     def __init__(self, model_name: str, logger: logging.Logger):
@@ -350,6 +354,7 @@ class CachedCometScorer:
 # Reward construction
 # =============================================================================
 
+
 @dataclass
 class RewardTelemetry:
     raw_dialect_gen_mean: float = 0.0
@@ -378,8 +383,10 @@ def make_trim_wrapper(stop_strings: Sequence[str]):
             if base_col in kwargs and kwargs[base_col] is not None:
                 kwargs[base_col] = [hard_trim_completion(c, stop_strings) for c in kwargs[base_col]]
             return reward_fn(prompts, trimmed, **kwargs)
+
         _wrapped.__name__ = getattr(reward_fn, "__name__", "reward_fn")
         return _wrapped
+
     return trim_wrapper
 
 
@@ -452,28 +459,27 @@ class CombinedReward:
                 f"and base outputs ({len(base_outputs)})."
             )
 
-        # Raw reward components
         r_d_gen = np.array(dialect_density(list(completions)), dtype=np.float32)
         r_d_base = np.array(dialect_density(list(base_outputs)), dtype=np.float32)
         r_d_chosen = np.array(dialect_density(list(chosen)), dtype=np.float32)
         r_d_gain = r_d_gen - r_d_base
 
-
         if self.w_comet != 0.0:
             r_c = self.comet.score(prompt_raw, completions, chosen)
         else:
             r_c = np.zeros(len(completions), dtype=np.float32)
-        r_s = self.cosine.score(completions, chosen)
 
-        # Normalize each component
+        if self.w_cosine != 0.0:
+            r_s = self.cosine.score(completions, chosen)
+        else:
+            r_s = np.zeros(len(completions), dtype=np.float32)
+
         if self.method == "none":
             z_d, z_c, z_s = r_d_gain, r_c, r_s
-
         elif self.method == "batch_zscore":
             z_d = self._clip(self._zscore_batch(r_d_gain))
             z_c = self._clip(self._zscore_batch(r_c))
             z_s = self._clip(self._zscore_batch(r_s))
-
         elif self.method == "running_zscore":
             self.rz_dialect.update(r_d_gain)
             self.rz_comet.update(r_c)
@@ -554,7 +560,8 @@ class CombinedReward:
 # Trainer subclass for better logging
 # =============================================================================
 
-class LoggingGRPOTrainer(GRPOTrainer):
+
+class LoggingGSPOTrainer(GRPOTrainer):
     def __init__(self, *args, reward_tracker: Optional[CombinedReward] = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.reward_tracker = reward_tracker
@@ -568,18 +575,14 @@ class LoggingGRPOTrainer(GRPOTrainer):
             logs.setdefault("train/reward_raw/dialect_base_mean", rt.raw_dialect_base_mean)
             logs.setdefault("train/reward_raw/dialect_chosen_mean", rt.raw_dialect_chosen_mean)
             logs.setdefault("train/reward_raw/dialect_gain_mean", rt.raw_dialect_gain_mean)
-
             logs.setdefault("train/reward_raw/comet_mean", rt.raw_comet_mean)
             logs.setdefault("train/reward_raw/cosine_mean", rt.raw_cosine_mean)
-
             logs.setdefault("train/reward_norm/dialect_gain_mean", rt.norm_dialect_gain_mean)
             logs.setdefault("train/reward_norm/comet_mean", rt.norm_comet_mean)
             logs.setdefault("train/reward_norm/cosine_mean", rt.norm_cosine_mean)
-
             logs.setdefault("train/reward_total/mean", rt.total_mean)
             logs.setdefault("train/reward_total/std", rt.total_std)
 
-        # Surface KL-like keys if TRL provides them
         for src_key in [
             "kl",
             "approx_kl",
@@ -591,20 +594,49 @@ class LoggingGRPOTrainer(GRPOTrainer):
             if src_key in logs:
                 logs.setdefault("train/kl", logs[src_key])
 
+        for src_key in [
+            "clip_ratio/region_mean",
+            "clip_ratio/low_mean",
+            "clip_ratio/high_mean",
+            "objective/clip_ratio",
+            "clip_ratio",
+            "clip_frac",
+        ]:
+            if src_key in logs:
+                if "region" in src_key or src_key in ("objective/clip_ratio", "clip_ratio", "clip_frac"):
+                    logs.setdefault("train/clip_ratio", logs[src_key])
+                elif "low" in src_key:
+                    logs.setdefault("train/clip_ratio_low", logs[src_key])
+                elif "high" in src_key:
+                    logs.setdefault("train/clip_ratio_high", logs[src_key])
+
         super().log(logs, *args, **kwargs)
 
 
 # =============================================================================
-# GRPOConfig compatibility helper
+# GRPOConfig helper set to GSPO-style sequence-level updates
 # =============================================================================
 
-def build_grpo_config(cfg: Dict[str, Any], logger: logging.Logger, tokenizer, eos_ids: List[int]) -> GRPOConfig:
+
+def build_gspo_config(cfg: Dict[str, Any], logger: logging.Logger, tokenizer, eos_ids: List[int]) -> GRPOConfig:
     raw_args = dict(cfg.get("trainer", {}))
 
     gen_kwargs = dict(raw_args.get("generation_kwargs", {}))
     gen_kwargs["eos_token_id"] = eos_ids
     gen_kwargs["pad_token_id"] = tokenizer.pad_token_id
     raw_args["generation_kwargs"] = gen_kwargs
+
+    # Force GSPO-style settings unless the config explicitly overrides them.
+    raw_args.setdefault("importance_sampling_level", "sequence")
+    raw_args.setdefault("loss_type", "grpo")
+    raw_args.setdefault("beta", 0.0)
+    raw_args.setdefault("epsilon", 3e-4)
+    raw_args.setdefault("epsilon_high", 4e-4)
+    raw_args.setdefault("gradient_accumulation_steps", 1)
+    raw_args.setdefault("steps_per_generation", 4)
+
+    # Keep a safe default if not specified.
+    raw_args.setdefault("max_prompt_length", 2048)
 
     sig = inspect.signature(GRPOConfig.__init__)
     allowed = set(sig.parameters.keys())
@@ -615,12 +647,28 @@ def build_grpo_config(cfg: Dict[str, Any], logger: logging.Logger, tokenizer, eo
     if dropped:
         logger.warning("Dropping unsupported GRPOConfig args for this TRL version: %s", dropped)
 
+    logger.info(
+        (
+            "Using GSPO-style config | importance_sampling_level=%s loss_type=%s "
+            "beta=%s epsilon=%s epsilon_high=%s gradient_accumulation_steps=%s "
+            "steps_per_generation=%s"
+        ),
+        filtered_args.get("importance_sampling_level"),
+        filtered_args.get("loss_type"),
+        filtered_args.get("beta"),
+        filtered_args.get("epsilon"),
+        filtered_args.get("epsilon_high"),
+        filtered_args.get("gradient_accumulation_steps"),
+        filtered_args.get("steps_per_generation"),
+    )
+
     return GRPOConfig(**filtered_args)
 
 
 # =============================================================================
 # Main entrypoint
 # =============================================================================
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -693,12 +741,18 @@ def main() -> None:
     max_completion_len = int(cfg.get("trainer", {}).get("max_completion_length", 64))
     safety_margin = int(cfg.get("trainer", {}).get("length_safety_margin", 8))
 
+    # Keep your original conservative prompt cap.
+    # If you want, you can later switch this to:
+    # max_prompt_len = max(32, model_max_len - max_completion_len - safety_margin)
     max_prompt_len = 2048
     max_prompt_len = max(32, int(max_prompt_len))
 
     logger.info(
         "Length guard: model_max_len=%d, max_completion_len=%d, safety_margin=%d => max_prompt_len=%d",
-        model_max_len, max_completion_len, safety_margin, max_prompt_len
+        model_max_len,
+        max_completion_len,
+        safety_margin,
+        max_prompt_len,
     )
 
     tokenizer.model_max_length = max_prompt_len
@@ -712,7 +766,6 @@ def main() -> None:
         built = truncate_prompt_to_max_tokens(tokenizer, built, max_prompt_len)
         ex["prompt"] = built
 
-        # Keep a trimmed base output around for fair density comparisons
         if base_output_column in ex and isinstance(ex[base_output_column], str):
             ex[base_output_column] = hard_trim_completion(ex[base_output_column], stop_strings)
 
@@ -739,13 +792,14 @@ def main() -> None:
     trim_wrapper = make_trim_wrapper(stop_strings)
     reward_funcs = [trim_wrapper(reward_tracker)]
 
-    grpo_args = build_grpo_config(cfg, logger, tokenizer, eos_ids)
+    gspo_args = build_gspo_config(cfg, logger, tokenizer, eos_ids)
 
-    logger.info("model.device=%s dtype=%s", next(model.parameters()).device, next(model.parameters()).dtype)
+    first_param = next(model.parameters())
+    logger.info("model.device=%s dtype=%s", first_param.device, first_param.dtype)
 
-    trainer = LoggingGRPOTrainer(
+    trainer = LoggingGSPOTrainer(
         model=model,
-        args=grpo_args,
+        args=gspo_args,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         processing_class=tokenizer,
