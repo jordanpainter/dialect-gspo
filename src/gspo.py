@@ -169,9 +169,9 @@ def load_policy_and_tokenizer(cfg: Dict[str, Any], logger: logging.Logger) -> Tu
 
     quant_cfg = _build_quant_config(mcfg)
 
-    local_rank = get_local_rank()
-    device_map = {"": local_rank}
-    logger.info("LOCAL_RANK=%s | device_map=%s", local_rank, device_map)
+    gpu_count = torch.cuda.device_count()
+    device_map = "auto" if gpu_count > 1 else {"": get_local_rank()}
+    logger.info("cuda_device_count=%s | device_map=%s", gpu_count, device_map)
 
     dtype = torch.bfloat16 if cfg.get("trainer", {}).get("bf16", False) else None
 
@@ -636,7 +636,7 @@ def build_gspo_config(cfg: Dict[str, Any], logger: logging.Logger, tokenizer, eo
     raw_args.setdefault("steps_per_generation", 4)
 
     # Keep a safe default if not specified.
-    raw_args.setdefault("max_prompt_length", 2048)
+    raw_args.setdefault("max_prompt_length", 1024)
 
     sig = inspect.signature(GRPOConfig.__init__)
     allowed = set(sig.parameters.keys())
