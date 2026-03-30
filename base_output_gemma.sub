@@ -75,7 +75,7 @@ apptainer exec --nv "$SIF" bash -lc "
         --output_col base_output_gemma \
         --system_prompt 'You are a helpful assistant.' \
         --max_new_tokens 256 \
-        --batch_size 4 \
+        --batch_size 32 \
         --bf16 \
         --use_chat_template \
         --dialect_model_path srirag/feature-identifier \

@@ -260,7 +260,6 @@ def add_base_outputs(
                 do_sample=False,
                 use_cache=True,
                 return_dict_in_generate=False,
-                repetition_penalty=1.05,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=eos_ids,
         )
