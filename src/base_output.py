@@ -36,7 +36,7 @@ from datasets import Dataset, DatasetDict, load_from_disk
 from huggingface_hub import HfApi, create_repo, login as hf_login, snapshot_download
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from rewards.dialect_reward_model import RewardModel
+from rewards.dialect_reward_model import DialectDensityScorer as RewardModel
 from src.formatting import build_chat_prompt
 
 
