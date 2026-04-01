@@ -32,7 +32,7 @@ import os
 from typing import Any, Dict, Optional, Tuple
 
 import torch
-from datasets import Dataset, DatasetDict, load_from_disk
+from datasets import Dataset, DatasetDict, load_dataset, load_from_disk
 from huggingface_hub import HfApi, create_repo, login as hf_login, snapshot_download
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -135,7 +135,11 @@ def load_dataset_snapshot(dataset_id: str, split: str, logger: logging.Logger) -
     local_path = snapshot_download(repo_id=dataset_id, repo_type="dataset")
     logger.info("Downloaded dataset snapshot to %s", local_path)
 
-    ds_any = load_from_disk(local_path)
+    try:
+        ds_any = load_from_disk(local_path)
+    except FileNotFoundError:
+        logger.info("Not a save_to_disk snapshot, falling back to load_dataset")
+        ds_any = load_dataset(dataset_id, split=None)
 
     if isinstance(ds_any, Dataset):
         logger.info("Loaded Dataset with columns: %s", ds_any.column_names)
