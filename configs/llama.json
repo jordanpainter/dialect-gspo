@@ -1,12 +1,12 @@
 {
   "wandb": {
-    "project": "dialect_gspo",
+    "project": "gspo-all",
     "entity": "jordanpainter",
     "api_key": "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"
   },
 
   "model": {
-    "model_id": "srirag/sft-llama-all",
+    "model_id": "jordanpainter/DialLM-Llama-sft-all",
     "tokenizer_id": "meta-llama/Llama-3.1-8B",
 
     "load_in_4bit": false,
@@ -34,7 +34,7 @@
   },
 
   "data": {
-    "dataset_id": "jordanpainter/dialect-grpo-base-llama",
+    "dataset_id": "jordanpainter/dialect-llama-base-all",
     "dataset_split": "train",
     "base_output_column": "base_output_llama_sft",
     "seed": 42,
@@ -98,7 +98,7 @@
       "do_sample": true
     },
 
-    "beta": 0.0,
+    "beta": 0.05,
     "epsilon": 0.0003,
     "epsilon_high": 0.0004,
     "importance_sampling_level": "sequence",
