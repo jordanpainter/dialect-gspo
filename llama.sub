@@ -88,5 +88,5 @@ apptainer exec --nv "$SIF" bash -lc "
     python3 -c \"import os; print('WANDB_ENTITY=', os.environ.get('WANDB_ENTITY')); print('WANDB_PROJECT=', os.environ.get('WANDB_PROJECT')); print('WANDB_NAME=', os.environ.get('WANDB_NAME')); print('WANDB_MODE=', os.environ.get('WANDB_MODE'))\"
     python3 -c \"import src.gspo; print('USING', src.gspo.__file__)\"
 
-    accelerate launch --num_processes 4 -m src.gspo -c '$CONFIG'
+    accelerate launch --num_processes 1 -m src.gspo -c '$CONFIG'
 "
