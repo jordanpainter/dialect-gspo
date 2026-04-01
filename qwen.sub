@@ -3,7 +3,7 @@
 #SBATCH --partition=a100
 #SBATCH --gres=gpu:2
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=80G
+#SBATCH --mem=200G
 #SBATCH --time=48:00:00
 #SBATCH --output=/mnt/fast/nobackup/scratch4weeks/%u/logs/%x.%N.%j.out
 #SBATCH --error=/mnt/fast/nobackup/scratch4weeks/%u/logs/%x.%N.%j.err
