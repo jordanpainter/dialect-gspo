@@ -1,0 +1,83 @@
+#!/bin/bash
+#SBATCH --job-name=base_out_gemma_brit
+#SBATCH --partition=3090
+#SBATCH --gres=gpu:nvidia_geforce_rtx_3090:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=40G
+#SBATCH --time=12:00:00
+#SBATCH --output=/mnt/fast/nobackup/scratch4weeks/%u/logs/%x.%N.%j.out
+#SBATCH --error=/mnt/fast/nobackup/scratch4weeks/%u/logs/%x.%N.%j.err
+
+set -euo pipefail
+
+SCRATCH=/mnt/fast/nobackup/scratch4weeks/$USER
+SIF="$SCRATCH/dialect-grpo-qwen-cu121.sif"
+REPO="$SCRATCH/repos/dialect-gspo"
+OUTPUT_DIR="$SCRATCH/data/dialect-gemma-base-brit"
+
+mkdir -p \
+  "$SCRATCH/logs" \
+  "$SCRATCH/tmp" \
+  "$SCRATCH/hf/hub" \
+  "$SCRATCH/hf/datasets" \
+  "$SCRATCH/hf/transformers" \
+  "$OUTPUT_DIR"
+
+export HF_HOME="$SCRATCH/hf"
+export HUGGINGFACE_HUB_CACHE="$SCRATCH/hf/hub"
+export HF_DATASETS_CACHE="$SCRATCH/hf/datasets"
+export TRANSFORMERS_CACHE="$SCRATCH/hf/transformers"
+export HF_HUB_ENABLE_HF_TRANSFER=0
+
+export HF_TOKEN="${HF_TOKEN:-}"
+
+export TMPDIR="$SCRATCH/tmp"
+export TEMP="$SCRATCH/tmp"
+export TMP="$SCRATCH/tmp"
+export TOKENIZERS_PARALLELISM=false
+
+echo "HOST=$(hostname)"
+echo "SIF=$SIF"
+echo "REPO=$REPO"
+echo "OUTPUT_DIR=$OUTPUT_DIR"
+
+nvidia-smi
+
+apptainer exec --nv "$SIF" bash -lc "
+    set -euo pipefail
+
+    export HF_HOME='$HF_HOME'
+    export HUGGINGFACE_HUB_CACHE='$HUGGINGFACE_HUB_CACHE'
+    export HF_DATASETS_CACHE='$HF_DATASETS_CACHE'
+    export TRANSFORMERS_CACHE='$TRANSFORMERS_CACHE'
+    export HF_HUB_ENABLE_HF_TRANSFER='$HF_HUB_ENABLE_HF_TRANSFER'
+    export HF_TOKEN='$HF_TOKEN'
+
+    export TMPDIR='$TMPDIR'
+    export TEMP='$TEMP'
+    export TMP='$TMP'
+    export TOKENIZERS_PARALLELISM='$TOKENIZERS_PARALLELISM'
+
+    export PYTHONPATH='$REPO':\${PYTHONPATH:-}
+
+    cd '$REPO'
+
+    echo 'PWD=' \$(pwd)
+    echo 'PYTHONPATH=' \$PYTHONPATH
+    python3 --version
+    python3 -c \"import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available(), 'count', torch.cuda.device_count())\"
+
+    python3 -m src.base_output \
+        --dataset_id jordanpainter/alignment-british-final \
+        --dataset_split train \
+        --model_id jordanpainter/DialLM-Gemma-sft-brit \
+        --output_dir '$OUTPUT_DIR' \
+        --output_col base_output_gemma_brit \
+        --system_prompt 'You are a helpful assistant.' \
+        --max_new_tokens 256 \
+        --batch_size 16 \
+        --bf16 \
+        --use_chat_template \
+        --dialect_model_path srirag/feature-identifier \
+        --dialect_output_col base_dialect_density_gemma_brit
+"
