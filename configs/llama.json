@@ -73,7 +73,7 @@
     "report_to": "wandb",
 
     "max_steps": 5000,
-    "learning_rate": 5e-6,
+    "learning_rate": 2e-6,
     "warmup_ratio": 0.05,
     "weight_decay": 0.0,
 
