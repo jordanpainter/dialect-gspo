@@ -11,8 +11,9 @@ That matches the GSPO-style route documented in TRL.
 
 Main features:
 - Supports loading datasets either from local disk or Hugging Face Hub.
-- Uses dialect density gain as the dialect reward term:
-      dialect_gain = dialect_density(generation) - dialect_density(base_output)
+- Uses absolute dialect density of the generation as the dialect reward term:
+      dialect_reward = dialect_density(generation)
+  (gain over base is still logged for monitoring but not used as the reward signal)
 - Keeps semantic reward against the chosen response using COMET + cosine similarity.
 - Logs generation/base/chosen dialect densities and gain to trainer logs (and therefore W&B).
 - Surfaces KL/clip-like metrics under stable names when TRL provides them.
@@ -475,22 +476,22 @@ class CombinedReward:
             r_s = np.zeros(len(completions), dtype=np.float32)
 
         if self.method == "none":
-            z_d, z_c, z_s = r_d_gain, r_c, r_s
+            z_d, z_c, z_s = r_d_gen, r_c, r_s
         elif self.method == "batch_zscore":
-            z_d = self._clip(self._zscore_batch(r_d_gain))
+            z_d = self._clip(self._zscore_batch(r_d_gen))
             z_c = self._clip(self._zscore_batch(r_c))
             z_s = self._clip(self._zscore_batch(r_s))
         elif self.method == "running_zscore":
-            self.rz_dialect.update(r_d_gain)
+            self.rz_dialect.update(r_d_gen)
             self.rz_comet.update(r_c)
             self.rz_cosine.update(r_s)
 
             if self.rz_dialect.steps <= self.warmup_steps:
-                z_d = self._clip(self._zscore_batch(r_d_gain))
+                z_d = self._clip(self._zscore_batch(r_d_gen))
                 z_c = self._clip(self._zscore_batch(r_c))
                 z_s = self._clip(self._zscore_batch(r_s))
             else:
-                z_d = self._clip(self.rz_dialect.normalize(r_d_gain))
+                z_d = self._clip(self.rz_dialect.normalize(r_d_gen))
                 z_c = self._clip(self.rz_comet.normalize(r_c))
                 z_s = self._clip(self.rz_cosine.normalize(r_s))
         else:
