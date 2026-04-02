@@ -7,7 +7,7 @@
 
   "model": {
     "model_id": "jordanpainter/DialLM-Qwen-sft-all",
-    "tokenizer_id": "Qwen/Qwen3-8B",
+    "tokenizer_id": "jordanpainter/DialLM-Qwen-sft-all",
 
     "load_in_4bit": false,
     "bnb_4bit_compute_dtype": "bfloat16",
