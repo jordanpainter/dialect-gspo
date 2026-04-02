@@ -7,7 +7,7 @@
 
   "model": {
     "model_id": "jordanpainter/DialLM-Llama-sft-all",
-    "tokenizer_id": "jordanpainter/DialLM-Llama-sft-all",
+    "tokenizer_id": "meta-llama/Llama-3.1-8B",
 
     "load_in_4bit": false,
     "bnb_4bit_compute_dtype": "bfloat16",
