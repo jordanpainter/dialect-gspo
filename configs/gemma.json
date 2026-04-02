@@ -98,12 +98,13 @@
       "do_sample": true
     },
 
-    "beta": 0.05,
+    "beta": 0.1,
     "epsilon": 0.0003,
     "epsilon_high": 0.0004,
     "importance_sampling_level": "sequence",
     "loss_type": "grpo",
 
-    "scale_rewards": false
+    "scale_rewards": false,
+    "max_grad_norm": 1.0
   }
 }
