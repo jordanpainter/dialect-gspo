@@ -44,9 +44,9 @@
 
   "rewards": {
     "weights": {
-      "dialect": 0.5,
-      "comet": 0.25,
-      "cosine": 0.25
+      "dialect": 0.8,
+      "comet": 0.1,
+      "cosine": 0.1
     },
 
     "normalization": {
