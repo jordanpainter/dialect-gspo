@@ -44,7 +44,7 @@
 
   "rewards": {
     "weights": {
-      "dialect": 2.0,
+      "dialect": 0.5,
       "comet": 0.25,
       "cosine": 0.25
     },
