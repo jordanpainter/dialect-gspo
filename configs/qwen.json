@@ -105,6 +105,7 @@
     "loss_type": "grpo",
 
     "scale_rewards": false,
-    "max_grad_norm": 1.0
+    "max_grad_norm": 1.0,
+    "optim": "adamw_bnb_8bit"
   }
 }
